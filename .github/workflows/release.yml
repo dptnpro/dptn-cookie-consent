@@ -15,7 +15,7 @@ jobs:
     env:
       SLUG: dptn-cookie-consent
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@v5
 
       - name: Версия в теге, заголовке и константе совпадает
         run: |
@@ -27,9 +27,9 @@ jobs:
           grep -q "^## $TAG\$" CHANGELOG.md || { echo "Нет раздела ## $TAG в CHANGELOG.md"; exit 1; }
           echo "VERSION=$TAG" >> "$GITHUB_ENV"
 
-      - uses: actions/setup-node@v4
+      - uses: actions/setup-node@v5
         with:
-          node-version: 20
+          node-version: 22
 
       - name: Собранные ассеты актуальны
         run: |
