@@ -27,7 +27,13 @@ Iframe YouTube, RUTUBE, VK Видео, Яндекс.Карт и Google Карт 
 
 ## Установка
 
-Скопировать папку в `wp-content/plugins/` без `node_modules`, активировать.
+Скачать `dptn-cookie-consent.zip` со страницы [последнего релиза](https://github.com/dptnpro/dptn-cookie-consent/releases/latest)
+и загрузить в «Плагины → Добавить новый → Загрузить плагин». Архив исходного кода (Source code) не подходит:
+в нём папка с другим именем.
+
+Новые версии появляются в «Консоль → Обновления» и ставятся как обычные, работают и автообновления.
+Плагин раз в 6 часов скачивает `info.json` последнего релиза (`includes/class-updater.php`), «Проверить снова» сбрасывает кеш.
+Версии до 0.4.0 обновлений не получают: их нужно один раз заменить вручную.
 
 ## Настройка
 
@@ -68,3 +74,14 @@ npm install && npm run build && npm run size
 ```
 
 Без сборки плагин берёт исходники из `assets/src/`.
+
+## Выпуск версии
+
+1. Поднять версию в заголовке `Version:` и в `DPTN_CC_VERSION` (`dptn-cookie-consent.php`), при необходимости `Tested up to:`.
+2. Добавить раздел `## X.Y.Z` в `CHANGELOG.md`.
+3. `npm run build`, закоммитить вместе с `assets/*.min.*`.
+4. `git tag vX.Y.Z && git push origin main vX.Y.Z`.
+
+GitHub Action (`.github/workflows/release.yml`) сверит версии, пересоберёт ассеты, соберёт zip через `git archive`
+(без файлов из `export-ignore` в `.gitattributes`) и опубликует релиз с `dptn-cookie-consent.zip` и `info.json`.
+Сайты увидят обновление при следующей проверке.

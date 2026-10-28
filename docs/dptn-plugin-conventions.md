@@ -70,6 +70,10 @@
 
 `Update URI` важен. Без него WordPress сверяет плагин по slug с каталогом wordpress.org и, если там появится плагин с таким же slug, предложит «обновление» чужим кодом. Убрать строку стоит только при публикации на wordpress.org.
 
+Для плагинов, которые обновляются из GitHub Releases, `Update URI` — адрес репозитория (`https://github.com/dptnpro/{slug}`):
+WordPress спрашивает о новой версии через фильтр `update_plugins_github.com`. Образец — `includes/class-updater.php`
+и `.github/workflows/release.yml` в DPTN Cookie Consent.
+
 ## Правила
 
 1. В глобальном пространстве нет ни одного имени без `dptn_{code}_` / `DPTN_{CODE}_`.

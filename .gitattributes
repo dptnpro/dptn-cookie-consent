@@ -7,3 +7,4 @@
 /docs             export-ignore
 /package.json     export-ignore
 /package-lock.json export-ignore
+/.github          export-ignore

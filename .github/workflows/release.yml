@@ -1,0 +1,63 @@
+# Релиз по тегу vX.Y.Z: проверка версии, сборка zip и info.json для обновлений плагина
+# (их читает includes/class-updater.php по ссылке releases/latest/download/info.json).
+name: Release
+
+on:
+  push:
+    tags: ['v*.*.*']
+
+permissions:
+  contents: write
+
+jobs:
+  release:
+    runs-on: ubuntu-latest
+    env:
+      SLUG: dptn-cookie-consent
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Версия в теге, заголовке и константе совпадает
+        run: |
+          TAG="${GITHUB_REF_NAME#v}"
+          HEADER=$(sed -n 's/^ \* Version: *//p' "$SLUG.php")
+          CONST=$(sed -n "s/^define( 'DPTN_CC_VERSION', '\(.*\)' );/\1/p" "$SLUG.php")
+          echo "tag=$TAG header=$HEADER const=$CONST"
+          [ "$TAG" = "$HEADER" ] && [ "$TAG" = "$CONST" ]
+          grep -q "^## $TAG\$" CHANGELOG.md || { echo "Нет раздела ## $TAG в CHANGELOG.md"; exit 1; }
+          echo "VERSION=$TAG" >> "$GITHUB_ENV"
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 20
+
+      - name: Собранные ассеты актуальны
+        run: |
+          npm ci
+          npm run build
+          git diff --exit-code assets/ || { echo "Запустите npm run build и закоммитьте assets/*.min.*"; exit 1; }
+          npm run size
+
+      - name: Zip и info.json
+        run: |
+          # Состав архива задаёт export-ignore в .gitattributes (повторяет .distignore).
+          git archive --format=zip --prefix="$SLUG/" -o "$SLUG.zip" HEAD
+          awk -v v="## $VERSION" '$0==v{f=1;next} /^## /{f=0} f' CHANGELOG.md | sed '/./,$!d' > notes.md
+          field() { sed -n "s/^ \* $1: *//p" "$SLUG.php"; }
+          jq -n \
+            --arg version "$VERSION" \
+            --arg download_url "https://github.com/$GITHUB_REPOSITORY/releases/download/$GITHUB_REF_NAME/$SLUG.zip" \
+            --arg requires "$(field 'Requires at least')" \
+            --arg requires_php "$(field 'Requires PHP')" \
+            --arg tested "$(field 'Tested up to')" \
+            --arg last_updated "$(date -u '+%Y-%m-%d %H:%M:%S')" \
+            --rawfile changelog notes.md \
+            '{version:$version, download_url:$download_url, requires:$requires, requires_php:$requires_php, tested:$tested, last_updated:$last_updated, changelog:$changelog}' \
+            > info.json
+          cat info.json
+          unzip -l "$SLUG.zip"
+
+      - name: Публикация релиза
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: gh release create "$GITHUB_REF_NAME" "$SLUG.zip" info.json --title "$VERSION" --notes-file notes.md

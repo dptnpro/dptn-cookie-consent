@@ -3,19 +3,20 @@
  * Plugin Name:       DPTN Cookie Consent
  * Plugin URI:        https://dptn.pro
  * Description:       Лёгкий баннер согласия на cookie для сайтов РФ (152-ФЗ). Совместим со страничным кешем. Разработчик: DPTN (dptn.pro).
- * Version:           0.3.3
+ * Version:           0.4.0
  * Requires at least: 6.3
  * Requires PHP:      7.4
+ * Tested up to:      7.1
  * Author:            DPTN
  * Author URI:        https://dptn.pro
  * License:           GPL-2.0-or-later
  * Text Domain:       dptn-cookie-consent
- * Update URI:        https://dptn.pro
+ * Update URI:        https://github.com/dptnpro/dptn-cookie-consent
  */
 
 defined( 'ABSPATH' ) || exit;
 
-define( 'DPTN_CC_VERSION', '0.3.3' );
+define( 'DPTN_CC_VERSION', '0.4.0' );
 define( 'DPTN_CC_FILE', __FILE__ );
 define( 'DPTN_CC_DIR', plugin_dir_path( __FILE__ ) );
 define( 'DPTN_CC_URL', plugin_dir_url( __FILE__ ) );
@@ -44,6 +45,12 @@ function dptn_cc_deactivate() {
  * Подключает только то, что нужно в текущем контексте.
  */
 function dptn_cc_bootstrap() {
+	// Проверка обновлений идёт в админке, по крону и из WP-CLI; установка — и через AJAX админки.
+	if ( is_admin() || wp_doing_cron() || ( defined( 'WP_CLI' ) && WP_CLI ) ) {
+		require_once DPTN_CC_DIR . 'includes/class-updater.php';
+		DPTN\CookieConsent\Updater::init();
+	}
+
 	if ( wp_doing_cron() ) {
 		require_once DPTN_CC_DIR . 'includes/class-log.php';
 		add_action( 'dptn_cc_cleanup', array( 'DPTN\CookieConsent\Log', 'cleanup' ) );
