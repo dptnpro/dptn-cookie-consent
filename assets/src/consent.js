@@ -20,6 +20,8 @@
 	var state = readCookie();
 	var ui = null;
 	var lastFocus = null;
+	var fabEl = null;
+	var live = null;
 
 	cfg.cats.forEach(function (c) {
 		bits[c.id] = c.bit;
@@ -58,11 +60,14 @@
 
 	function save(mask) {
 		var prev = currentMask();
+		var decided = hasDecision();
 		mask = (mask & fullMask) | NECESSARY;
 		state = { v: cfg.v, mask: mask, ts: Math.floor(Date.now() / 1000), id: (state && state.id) || uuid() };
 		d.cookie = COOKIE + '=v' + state.v + '.' + mask + '.' + state.ts + '.' + state.id +
 			';path=/;max-age=' + cfg.days * 86400 + ';SameSite=Lax' + (location.protocol === 'https:' ? ';Secure' : '');
+		fab();
 		hide();
+		log(mask, decided && prev & ~mask ? 4 : mask === fullMask ? 1 : mask === NECESSARY ? 2 : 3);
 
 		// Уже исполненный скрипт не выгрузить: чистим его cookie и перезагружаем страницу.
 		if (prev & ~mask) {
@@ -70,8 +75,112 @@
 			location.reload();
 			return;
 		}
+		// Незаблокированный код темы уже проверил наличие библиотеки — подключаем её с перезагрузкой.
+		if (needsReload(mask & ~prev)) {
+			location.reload();
+			return;
+		}
 		activate(mask);
 		emit(mask);
+		announce(cfg.text.saved);
+	}
+
+	// Вежливое объявление для скринридера: баннер скрылся, выбор принят.
+	function announce(text) {
+		if (!live) {
+			live = el('div', 'dptn-cc-sr');
+			live.setAttribute('role', 'status');
+			d.body.appendChild(live);
+		}
+		live.textContent = '';
+		setTimeout(function () { live.textContent = text; }, 50);
+	}
+
+	// Плавающая кнопка «Настройки cookie»: появляется после выбора, пока баннер скрыт.
+	function fab() {
+		if (!cfg.fab || !hasDecision()) return;
+		if (!fabEl) {
+			fabEl = el('button', 'dptn-cc-fab dptn-cc-fab--' + cfg.fab);
+			fabEl.type = 'button';
+			fabEl.setAttribute('aria-label', cfg.text.fab);
+			fabEl.title = cfg.text.fab;
+			fabEl.innerHTML = '<svg viewBox="0 0 24 24" width="22" height="22" aria-hidden="true" focusable="false">' +
+				'<path fill="none" stroke="currentColor" stroke-width="2" stroke-linejoin="round" d="M21 12.5A9 9 0 1 1 11.5 3a3 3 0 0 0 3.5 3.5 3 3 0 0 0 3.5 3.5 3 3 0 0 0 2.5 2.5z"/>' +
+				'<circle cx="8.5" cy="10" r="1.3" fill="currentColor"/><circle cx="12" cy="15.5" r="1.3" fill="currentColor"/>' +
+				'<circle cx="16" cy="12.5" r="1" fill="currentColor"/><circle cx="7.5" cy="15" r="1" fill="currentColor"/></svg>';
+			fabEl.addEventListener('click', function () { open(true); });
+			d.body.appendChild(fabEl);
+		}
+		fabEl.hidden = !!(ui && !ui.root.hidden);
+	}
+
+	// Журнал согласий. Строка уходит как text/plain — без предварительного CORS-запроса,
+	// и sendBeacon доставит её, даже если следом страница перезагрузится.
+	// Действие: 1 — принял все, 2 — только необходимые, 3 — свой выбор, 4 — отозвал часть.
+	function log(mask, action) {
+		if (!cfg.log) return;
+		var body = JSON.stringify({ id: state.id, v: state.v, m: mask, a: action });
+		try {
+			if (navigator.sendBeacon && navigator.sendBeacon(cfg.log, body)) return;
+			fetch(cfg.log, { method: 'POST', body: body, keepalive: true, credentials: 'omit' });
+		} catch (e) {}
+	}
+
+	function needsReload(granted) {
+		return Array.prototype.some.call(
+			d.querySelectorAll('script[type="text/plain"][data-dptn-cc-reload]'),
+			function (el) { return bitOf(el.getAttribute('data-dptn-cc')) & granted; }
+		);
+	}
+
+	// Заглушка до согласия: «Разрешить и показать» или открыть настройки.
+	function makePh(name, bit, height) {
+		var ph = el('div', 'dptn-cc-ph');
+		ph.style.minHeight = (height || 200) + 'px';
+		ph.appendChild(el('p', 'dptn-cc-ph__text', cfg.text.embed.replace('%s', name || '')));
+
+		var actions = el('div', 'dptn-cc-ph__actions');
+		var allow = button('allow', cfg.text.embed_btn);
+		var more = button('more', cfg.text.settings);
+		allow.addEventListener('click', function () { save(currentMask() | bit); });
+		more.addEventListener('click', function () { open(true); });
+		actions.appendChild(allow);
+		actions.appendChild(more);
+		ph.appendChild(actions);
+		return ph;
+	}
+
+	function placeholders(mask) {
+		// Iframe: заглушка встаёт на его место.
+		Array.prototype.forEach.call(d.querySelectorAll('iframe[data-dptn-cc-src]'), function (f) {
+			var bit = bitOf(f.getAttribute('data-dptn-cc'));
+			if (!bit || bit & mask || f._dptnPh) return;
+
+			var ph = makePh(f.getAttribute('data-dptn-cc-name'), bit, f.offsetHeight);
+			if (f.offsetWidth) ph.style.maxWidth = f.offsetWidth + 'px';
+			f.parentNode.insertBefore(ph, f);
+			f.style.display = 'none';
+			f._dptnPh = ph;
+		});
+
+		// Блоки, которые наполняет заблокированный скрипт (например, контейнер карты): заглушка внутри.
+		(cfg.ph || []).forEach(function (p) {
+			var bit = bitOf(p.cat);
+			if (!bit || bit & mask) return;
+			var boxes;
+			try {
+				boxes = d.querySelectorAll(p.sel);
+			} catch (e) {
+				return; // некорректный селектор из настроек
+			}
+			Array.prototype.forEach.call(boxes, function (box) {
+				if (box._dptnPh) return;
+				box._dptnPh = makePh(p.name, bit, box.offsetHeight);
+				box._dptnPh.className += ' dptn-cc-ph--fill';
+				box._dptnPh._dptnBit = bit;
+				box.appendChild(box._dptnPh);
+			});
+		});
 	}
 
 	function purge(revoked) {
@@ -104,6 +213,20 @@
 	// Запускаем заблокированные скрипты по порядку: внешний скрипт без async
 	// дожидается загрузки, чтобы следующий за ним inline-код нашёл свои зависимости.
 	function activate(mask) {
+		Array.prototype.forEach.call(d.querySelectorAll('iframe[data-dptn-cc-src]'), function (f) {
+			if (!(bitOf(f.getAttribute('data-dptn-cc')) & mask)) return;
+			f.src = f.getAttribute('data-dptn-cc-src');
+			f.removeAttribute('data-dptn-cc-src');
+			f.style.display = '';
+			if (f._dptnPh) f._dptnPh.parentNode.removeChild(f._dptnPh);
+		});
+		Array.prototype.forEach.call(d.querySelectorAll('.dptn-cc-ph--fill'), function (ph) {
+			if (ph._dptnBit & mask) {
+				ph.parentNode._dptnPh = null;
+				ph.parentNode.removeChild(ph);
+			}
+		});
+
 		var queue = Array.prototype.filter.call(
 			d.querySelectorAll('script[type="text/plain"][data-dptn-cc]'),
 			function (el) { return bitOf(el.getAttribute('data-dptn-cc')) & mask; }
@@ -180,6 +303,7 @@
 			a.href = cfg.links[k];
 			a.target = '_blank';
 			a.rel = 'noopener';
+			a.appendChild(el('span', 'dptn-cc-sr', ' ' + t.new_tab));
 			links.appendChild(a);
 		});
 		if (links.children.length) box.appendChild(links);
@@ -187,6 +311,8 @@
 		var prefs = el('div', 'dptn-cc__prefs');
 		prefs.id = 'dptn-cc-prefs';
 		prefs.hidden = true;
+		prefs.setAttribute('role', 'group');
+		prefs.setAttribute('aria-label', t.settings);
 		var boxes = [];
 		cfg.cats.forEach(function (c) {
 			var row = el('label', 'dptn-cc__cat');
@@ -212,6 +338,9 @@
 			row.appendChild(info);
 			prefs.appendChild(row);
 		});
+		// ID согласия: по нему посетитель может запросить запись из журнала.
+		var idLine = el('p', 'dptn-cc__id');
+		prefs.appendChild(idLine);
 		box.appendChild(prefs);
 
 		var actions = el('div', 'dptn-cc__actions');
@@ -227,8 +356,12 @@
 		var togglePrefs = function (open) {
 			prefs.hidden = !open;
 			bSettings.textContent = open ? t.save : t.settings;
-			bSettings.setAttribute('aria-expanded', String(open));
+			// Открытая панель превращает кнопку в «Сохранить выбор» — это уже не переключатель.
+			if (open) bSettings.removeAttribute('aria-expanded');
+			else bSettings.setAttribute('aria-expanded', 'false');
 			if (open) {
+				idLine.textContent = state ? t.id + ': ' + state.id : '';
+				idLine.hidden = !state;
 				var mask = currentMask();
 				boxes.forEach(function (cb) { cb.checked = !!(mask & +cb.value); });
 			}
@@ -265,7 +398,8 @@
 			}
 		});
 
-		d.body.appendChild(root);
+		// Первым в body: скринридер и Tab доходят до баннера раньше содержимого страницы.
+		d.body.insertBefore(root, d.body.firstChild);
 		return { root: root, box: box, togglePrefs: togglePrefs };
 	}
 
@@ -273,6 +407,7 @@
 		ui = ui || build();
 		ui.togglePrefs(!!withPrefs);
 		ui.root.hidden = false;
+		if (fabEl) fabEl.hidden = true;
 		// При автопоказе внизу экрана фокус не перехватываем, чтобы не мешать чтению страницы.
 		if (withPrefs || cfg.pos === 'center') {
 			lastFocus = d.activeElement;
@@ -282,8 +417,12 @@
 
 	function hide() {
 		if (!ui) return;
+		var hadFocus = ui.root.contains(d.activeElement);
 		ui.root.hidden = true;
-		if (lastFocus && lastFocus.focus) lastFocus.focus({ preventScroll: true });
+		if (fabEl) fabEl.hidden = false;
+		// Возвращаем фокус туда, откуда открыли; иначе — на плавающую кнопку, чтобы он не терялся.
+		if (lastFocus && lastFocus.focus && lastFocus !== d.body) lastFocus.focus({ preventScroll: true });
+		else if (hadFocus && fabEl) fabEl.focus({ preventScroll: true });
 		lastFocus = null;
 	}
 
@@ -307,6 +446,8 @@
 	// Дочищаем то, что сервис успел записать при выгрузке страницы после отзыва.
 	if (hasDecision()) purge(fullMask & ~mask);
 	activate(mask);
+	placeholders(mask);
 	emit(mask);
 	if (!hasDecision()) open(false);
+	else fab();
 })(window, document);

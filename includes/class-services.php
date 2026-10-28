@@ -25,6 +25,106 @@ defined( 'ABSPATH' ) || exit;
 
 final class Services {
 
+	/**
+	 * Провайдеры встроенного контента: id => name, регулярка по адресу iframe.
+	 */
+	const EMBEDS = array(
+		'youtube'     => array( 'YouTube', '#^(https?:)?//([a-z0-9-]+\.)?(youtube\.com|youtube-nocookie\.com|youtu\.be)/#i' ),
+		'rutube'      => array( 'RUTUBE', '#^(https?:)?//([a-z0-9-]+\.)?rutube\.ru/#i' ),
+		'vk_video'    => array( 'VK Видео', '#^(https?:)?//([a-z0-9-]+\.)?(vk\.com|vk\.ru|vkvideo\.ru)/#i' ),
+		'yandex_maps' => array( 'Яндекс.Карты', '#^(https?:)?//([a-z0-9-]+\.)?yandex\.(ru|com|by|kz)/(map-widget|maps)/#i' ),
+		'google_maps' => array( 'Google Карты', '#^(https?:)?//([a-z0-9-]+\.)?google\.[a-z.]+/maps#i' ),
+	);
+
+	/**
+	 * Подсказки для найденных на сайте скриптов: регулярка по handle или адресу => name, category, cookies.
+	 * Только подсказки — блокируется лишь то, что админ добавил в настройках.
+	 */
+	const SCRIPT_HINTS = array(
+		'#^sourcebuster-js$#'               => array( 'WooCommerce: источники трафика', 'marketing', array( 'sbjs_' ) ),
+		'#^wc-order-attribution$#'          => array( 'WooCommerce: атрибуция заказов', 'marketing', array() ),
+		'#//api-maps\.yandex\.ru/#'         => array( 'Яндекс.Карты', 'functional', array( 'mdd' ) ),
+		'#//(top-fwz1\.mail\.ru|top\.mail\.ru)/#' => array( 'Top.Mail.ru / VK Реклама', 'marketing', array( 'tmr_' ) ),
+		'#//vk\.(com|ru)/js/api/openapi#'   => array( 'Пиксель VK', 'marketing', array() ),
+		'#//www\.googletagmanager\.com/#'   => array( 'Google Analytics / Tag Manager', 'analytics', array( '_ga', '_gid' ) ),
+		'#//www\.youtube\.com/iframe_api#'  => array( 'YouTube API', 'functional', array() ),
+		'#//cloud\.roistat\.com/#'          => array( 'Roistat', 'marketing', array( 'roistat' ) ),
+		'#//mod\.calltouch\.ru/#'           => array( 'Calltouch', 'marketing', array( '_ct' ) ),
+		'#//cdn\.callibri\.ru/#'            => array( 'Callibri', 'marketing', array( 'callibri' ) ),
+		'#//app\.(comagic|uiscom)\.ru/#'    => array( 'CoMagic / UIS', 'marketing', array( '_comagic', 'comagic' ) ),
+		'#//code\.jivo(site)?\.(ru|com)/#'  => array( 'Jivo (чат)', 'functional', array( 'jv_' ) ),
+		'#//mc\.yandex\.ru/#'               => array( 'Яндекс.Метрика — подключите на вкладке выше', '', array() ),
+	);
+
+	/**
+	 * Подсказка для скрипта по handle и адресу или null.
+	 */
+	public static function hint( string $handle, string $src ): ?array {
+		foreach ( self::SCRIPT_HINTS as $pattern => $hint ) {
+			if ( preg_match( $pattern, $handle ) || preg_match( $pattern, $src ) ) {
+				return $hint;
+			}
+		}
+
+		return null;
+	}
+
+	/**
+	 * Скрипты по handle из настроек: handle => category.
+	 *
+	 * @return string[]
+	 */
+	public static function script_map(): array {
+		$map = array();
+		foreach ( (array) Settings::get( 'scripts', array() ) as $row ) {
+			if ( ! empty( $row['handle'] ) && isset( Settings::CATEGORY_BITS[ $row['category'] ?? '' ] ) ) {
+				$map[ (string) $row['handle'] ] = (string) $row['category'];
+			}
+		}
+
+		return $map;
+	}
+
+	/**
+	 * Включённые провайдеры встроенного контента: id => array( name, regex ).
+	 */
+	public static function embeds(): array {
+		return array_intersect_key( self::EMBEDS, array_filter( (array) Settings::get( 'embeds', array() ) ) );
+	}
+
+	/**
+	 * Всё, о чём спрашиваем согласие: сервисы с кодом, скрипты по handle и встроенный контент.
+	 * Нужен баннеру для списка категорий и сервисов.
+	 *
+	 * @return array[] id, name, category, cookies.
+	 */
+	public static function listed(): array {
+		$list = array();
+		foreach ( self::enabled() as $service ) {
+			$list[] = array_intersect_key( $service, array_flip( array( 'id', 'name', 'category', 'cookies' ) ) );
+		}
+		foreach ( (array) Settings::get( 'scripts', array() ) as $row ) {
+			if ( ! empty( $row['handle'] ) && isset( Settings::CATEGORY_BITS[ $row['category'] ?? '' ] ) ) {
+				$list[] = array(
+					'id'       => 'script:' . $row['handle'],
+					'name'     => (string) ( $row['name'] ?? $row['handle'] ),
+					'category' => (string) $row['category'],
+					'cookies'  => array_values( array_map( 'strval', (array) ( $row['cookies'] ?? array() ) ) ),
+				);
+			}
+		}
+		foreach ( self::embeds() as $id => $embed ) {
+			$list[] = array(
+				'id'       => 'embed:' . $id,
+				'name'     => $embed[0],
+				'category' => 'functional',
+				'cookies'  => array(),
+			);
+		}
+
+		return $list;
+	}
+
 	public static function catalog(): array {
 		$catalog = array(
 			'yandex_metrika' => array(

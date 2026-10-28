@@ -10,6 +10,15 @@
 defined( 'ABSPATH' ) || exit;
 
 /**
+ * Путь к ассету баннера относительно папки плагина: минифицированный, если собран, иначе исходник.
+ *
+ * @param string $type css|js
+ */
+function dptn_cc_asset_path( string $type ): string {
+	return is_readable( DPTN_CC_DIR . "assets/consent.min.$type" ) ? "assets/consent.min.$type" : "assets/src/consent.$type";
+}
+
+/**
  * Разобранное согласие текущего посетителя или null, если его нет
  * либо оно дано на устаревшую версию текста.
  *

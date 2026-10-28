@@ -1,0 +1,12 @@
+{
+  "name": "dptn-cookie-consent",
+  "private": true,
+  "license": "GPL-2.0-or-later",
+  "scripts": {
+    "build": "esbuild assets/src/consent.js --minify --target=es2017 --outfile=assets/consent.min.js && esbuild assets/src/consent.css --minify --outfile=assets/consent.min.css",
+    "size": "for f in assets/consent.min.*; do printf '%s %s B, gzip %s B\\n' \"$f\" $(wc -c < \"$f\") $(gzip -9c \"$f\" | wc -c); done"
+  },
+  "devDependencies": {
+    "esbuild": "0.25.0"
+  }
+}

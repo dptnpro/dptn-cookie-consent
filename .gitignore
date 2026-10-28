@@ -1,0 +1,30 @@
+# Зависимости сборки
+node_modules/
+
+# Архивы релиза
+*.zip
+/dist/
+/build/
+
+# Логи и временные файлы
+*.log
+npm-debug.log*
+*.tmp
+*.bak
+*.swp
+*~
+
+# Системные файлы
+.DS_Store
+._*
+.Spotlight-V100
+.Trashes
+Thumbs.db
+desktop.ini
+
+# Редакторы и локальные настройки
+.idea/
+.vscode/
+*.code-workspace
+.env
+.env.*

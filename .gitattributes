@@ -1,0 +1,9 @@
+* text=auto eol=lf
+
+# Не попадают в git archive (как в .distignore)
+/.distignore      export-ignore
+/.gitattributes   export-ignore
+/.gitignore       export-ignore
+/docs             export-ignore
+/package.json     export-ignore
+/package-lock.json export-ignore
